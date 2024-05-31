@@ -7,6 +7,7 @@ import (
 
 	achtestharness "github.com/moov-io/ach-test-harness"
 	"github.com/moov-io/ach-test-harness/pkg/entries"
+	"github.com/moov-io/ach-test-harness/pkg/instantverify"
 	"github.com/moov-io/ach-test-harness/pkg/response"
 	"github.com/moov-io/ach-test-harness/pkg/service"
 	"github.com/moov-io/base/log"
@@ -36,6 +37,11 @@ func main() {
 	entryService := entries.NewEntryService(entryRepository)
 	entryController := entries.NewEntryController(env.Logger, entryService)
 	entryController.AppendRoutes(env.Router)
+
+	verifyRepository := instantverify.NewInstantVerifyRepository(env.Logger, env.Config.Servers.FTP)
+	verifyService := instantverify.NewInstantVerifyService(verifyRepository)
+	verifyController := instantverify.NewInstantVerifyController(env.Logger, verifyService)
+	verifyController.AppendRoutes(env.Router)
 
 	fileWriter := response.NewFileWriter(env.Logger, env.Config.Servers, env.FTPServer)
 	fileTransformer := response.NewFileTransformer(env.Logger, env.Config, env.Config.Responses, fileWriter)

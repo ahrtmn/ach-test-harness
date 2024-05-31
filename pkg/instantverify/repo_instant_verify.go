@@ -1,4 +1,4 @@
-package entries
+package instantverify
 
 import (
 	"fmt"
@@ -12,37 +12,36 @@ import (
 	"github.com/moov-io/base/log"
 )
 
-type EntryRepository interface {
-	Search(opts SearchOptions) ([]*ach.EntryDetail, error)
+type InstantVerifyRepository interface {
+	Search(opts SearchOptions) ([]*ach.BatchHeader, error)
 }
 
-type ftpRepository struct {
+type ftpBatchHeaderRepository struct {
 	logger   log.Logger
 	rootPath string
 }
 
-func NewFTPRepository(logger log.Logger, cfg *service.FTPConfig) *ftpRepository {
-	return &ftpRepository{
+func NewInstantVerifyRepository(logger log.Logger, cfg *service.FTPConfig) *ftpBatchHeaderRepository {
+	return &ftpBatchHeaderRepository{
 		logger:   logger,
 		rootPath: cfg.RootPath,
 	}
 }
 
-func (r *ftpRepository) Search(opts SearchOptions) ([]*ach.EntryDetail, error) {
-	out := make([]*ach.EntryDetail, 0)
+func (r *ftpBatchHeaderRepository) Search(opts SearchOptions) ([]*ach.BatchHeader, error) {
+	out := make([]*ach.BatchHeader, 0)
 
-	//nolint:gosimple
 	var search fs.WalkDirFunc
 	search = func(path string, d fs.DirEntry, err error) error {
-		if d.IsDir() {
-			return nil
-		}
 		if err != nil {
 			return nil
 		}
 
+		if d.IsDir() {
+			return nil
+		}
+
 		r.logger.Logf("reading %s", path)
-		// read only *.ach files
 		if strings.ToLower(filepath.Ext(path)) != ".ach" {
 			return nil
 		}
@@ -68,39 +67,29 @@ func (r *ftpRepository) Search(opts SearchOptions) ([]*ach.EntryDetail, error) {
 	return out, nil
 }
 
-func filterEntries(path string, opts SearchOptions) ([]*ach.EntryDetail, error) {
+func filterEntries(path string, opts SearchOptions) ([]*ach.BatchHeader, error) {
 	file, _ := ach.ReadFile(path)
 	if file == nil {
 		return nil, nil
 	}
 
-	tooOld, err := opts.fileTooOld(file)
-	if tooOld || err != nil {
-		return nil, err
-	}
-
 	mm := service.Match{
-		AccountNumber: opts.AccountNumber,
-		Amount: &service.Amount{
-			Value: opts.Amount,
-		},
-		RoutingNumber: opts.RoutingNumber,
-		TraceNumber:   opts.TraceNumber,
+		TraceNumber: opts.TraceNumber,
 	}
 
-	var out []*ach.EntryDetail
+	var out []*ach.BatchHeader
 	for i := range file.Batches {
 		entries := file.Batches[i].GetEntries()
+		header := file.Batches[i].GetHeader()
 		if mm.Empty() {
-			out = append(out, entries...)
+			out = append(out, header)
 			continue
 		}
+
 		for j := range entries {
-			if match.TraceNumber(mm, entries[j]) || match.AccountNumber(mm, entries[j]) ||
-				match.RoutingNumber(mm, entries[j]) || match.Amount(mm, entries[j]) {
-				// accumulate entry
-				out = append(out, entries[j])
-				continue
+			if match.TraceNumber(mm, entries[j]) {
+				out = append(out, header)
+				break
 			}
 		}
 	}
